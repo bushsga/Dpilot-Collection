@@ -1,168 +1,90 @@
-"use client"
+'use client';
 
-import React, { createContext, useContext, useEffect, useState } from "react"
-import { Product } from "@/types/product"
-import toast from 'react-hot-toast'
+import React, { createContext, useContext, useReducer, useEffect } from 'react';
+import type { Product, ProductVariant, CartItem } from '@/types';
 
-type CartItem = {
-  product: Product
-  quantity: number
+interface CartState { items: CartItem[]; }
+
+type CartAction =
+  | { type: 'ADD_ITEM'; payload: { product: Product; variant: ProductVariant | null; size: number | null } }
+  | { type: 'REMOVE_ITEM'; payload: { productId: string; variantId: string | null; size: number | null } }
+  | { type: 'UPDATE_QUANTITY'; payload: { productId: string; variantId: string | null; size: number | null; quantity: number } }
+  | { type: 'CLEAR_CART' };
+
+interface CartContextType {
+  items: CartItem[];
+  addItem: (product: Product, variant: ProductVariant | null, size: number | null) => void;
+  removeItem: (productId: string, variantId: string | null, size: number | null) => void;
+  updateQuantity: (productId: string, variantId: string | null, size: number | null, quantity: number) => void;
+  clearCart: () => void;
+  totalItems: number;
+  totalPrice: number;
+  getItemKey: (productId: string, variantId: string | null, size: number | null) => string;
 }
 
-type CartContextType = {
-  items: CartItem[]
-  addToCart: (product: Product) => { success: boolean; message?: string }
-  removeFromCart: (productId: string) => void
-  updateQuantity: (productId: string, quantity: number) => { success: boolean; message?: string }
-  clearCart: () => void
-  totalItems: number
-  totalPrice: number
-}
+const CartContext = createContext<CartContextType | undefined>(undefined);
 
-const CartContext = createContext<CartContextType | undefined>(undefined)
+const getItemKey = (productId: string, variantId: string | null, size: number | null): string => {
+  return `${productId}-${variantId ?? 'novariant'}-${size ?? 'nosize'}`;
+};
+
+function cartReducer(state: CartState, action: CartAction): CartState {
+  switch (action.type) {
+    case 'ADD_ITEM': {
+      const { product, variant, size } = action.payload;
+      const key = getItemKey(product.id, variant?.id ?? null, size);
+      const existingIdx = state.items.findIndex((item: CartItem) => getItemKey(item.product.id, item.variant?.id ?? null, item.size) === key);
+      const availableStock = variant ? variant.quantity : product.quantity;
+      const currentQty = existingIdx > -1 ? state.items[existingIdx].quantity : 0;
+      if (currentQty >= availableStock) { alert(`Only ${availableStock} available.`); return state; }
+      if (existingIdx > -1) {
+        const newItems = [...state.items];
+        newItems[existingIdx] = { ...newItems[existingIdx], quantity: newItems[existingIdx].quantity + 1 };
+        return { items: newItems };
+      }
+      return { items: [...state.items, { product, variant, size, quantity: 1 }] };
+    }
+    case 'REMOVE_ITEM':
+      return { items: state.items.filter((item: CartItem) => getItemKey(item.product.id, item.variant?.id ?? null, item.size) !== getItemKey(action.payload.productId, action.payload.variantId, action.payload.size)) };
+    case 'UPDATE_QUANTITY': {
+      const { productId, variantId, size, quantity } = action.payload;
+      if (quantity <= 0) return { items: state.items.filter((item: CartItem) => getItemKey(item.product.id, item.variant?.id ?? null, item.size) !== getItemKey(productId, variantId, size)) };
+      return { items: state.items.map((item: CartItem) => getItemKey(item.product.id, item.variant?.id ?? null, item.size) === getItemKey(productId, variantId, size) ? { ...item, quantity } : item) };
+    }
+    case 'CLEAR_CART': return { items: [] };
+    default: return state;
+  }
+}
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
-  const [items, setItems] = useState<CartItem[]>([])
+  const [state, dispatch] = useReducer(cartReducer, { items: [] }, (initial: CartState) => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('dpilot-cart');
+      if (saved) { try { return { items: JSON.parse(saved).items || [] }; } catch { return initial; } }
+    }
+    return initial;
+  });
 
-  // Load cart from localStorage on first render
   useEffect(() => {
-    const savedCart = localStorage.getItem("cart")
-    if (savedCart) {
-      try {
-        setItems(JSON.parse(savedCart))
-      } catch (error) {
-        console.error("Failed to load cart", error)
-      }
-    }
-  }, [])
+    if (typeof window !== 'undefined') localStorage.setItem('dpilot-cart', JSON.stringify(state));
+  }, [state]);
 
-  // Save cart to localStorage whenever it changes
-  useEffect(() => {
-    localStorage.setItem("cart", JSON.stringify(items))
-  }, [items])
-
-  const addToCart = (product: Product) => {
-    // Check if product is in stock
-    if (product.stock <= 0) {
-      toast.error("This product is out of stock")
-      return { success: false, message: "This product is out of stock" }
-    }
-
-    // Check if product already in cart
-    const existingItem = items.find(item => item.product.id === product.id)
-    
-    if (existingItem) {
-      // Check if adding one more would exceed stock
-      if (existingItem.quantity + 1 > product.stock) {
-        toast.error(`Sorry, only ${product.stock} units available`)
-        return { success: false, message: `Only ${product.stock} units available` }
-      }
-      
-      // Update quantity
-      setItems(currentItems =>
-        currentItems.map(item =>
-          item.product.id === product.id
-            ? { ...item, quantity: item.quantity + 1 }
-            : item
-        )
-      )
-      
-      // Show toast AFTER state update
-      setTimeout(() => {
-        toast.success(`${product.name} quantity updated in cart`)
-      }, 100)
-      
-      return { success: true }
-    } else {
-      // Add new item
-      setItems([...items, { product, quantity: 1 }])
-      
-      // Show toast AFTER state update
-      setTimeout(() => {
-        toast.success(`${product.name} added to cart`)
-      }, 100)
-      
-      return { success: true }
-    }
-  }
-
-  const removeFromCart = (productId: string) => {
-    const product = items.find(item => item.product.id === productId)?.product
-    setItems(currentItems => currentItems.filter(item => item.product.id !== productId))
-    
-    if (product) {
-      setTimeout(() => {
-        toast.success(`${product.name} removed from cart`)
-      }, 100)
-    }
-  }
-
-  const updateQuantity = (productId: string, quantity: number) => {
-    const item = items.find(i => i.product.id === productId)
-    
-    if (!item) {
-      return { success: false, message: "Item not found" }
-    }
-
-    // Check if requested quantity exceeds stock
-    if (quantity > item.product.stock) {
-      toast.error(`Sorry, only ${item.product.stock} units available`)
-      return { success: false, message: "Exceeds available stock" }
-    }
-
-    if (quantity <= 0) {
-      removeFromCart(productId)
-      return { success: true }
-    }
-
-    setItems(currentItems =>
-      currentItems.map(item =>
-        item.product.id === productId ? { ...item, quantity } : item
-      )
-    )
-    
-    setTimeout(() => {
-      toast.success(`${item.product.name} quantity updated`)
-    }, 100)
-    
-    return { success: true }
-  }
-
-  const clearCart = () => {
-    setItems([])
-    setTimeout(() => {
-      toast.success("Cart cleared")
-    }, 100)
-  }
-
-  const totalItems = items.reduce((sum, item) => sum + item.quantity, 0)
-  
-  const totalPrice = items.reduce(
-    (sum, item) => sum + item.product.price * item.quantity,
-    0
-  )
+  const addItem = (product: Product, variant: ProductVariant | null, size: number | null) => dispatch({ type: 'ADD_ITEM', payload: { product, variant, size } });
+  const removeItem = (productId: string, variantId: string | null, size: number | null) => dispatch({ type: 'REMOVE_ITEM', payload: { productId, variantId, size } });
+  const updateQuantity = (productId: string, variantId: string | null, size: number | null, quantity: number) => dispatch({ type: 'UPDATE_QUANTITY', payload: { productId, variantId, size, quantity } });
+  const clearCart = () => dispatch({ type: 'CLEAR_CART' });
+  const totalItems: number = state.items.reduce((sum: number, item: CartItem) => sum + item.quantity, 0);
+  const totalPrice: number = state.items.reduce((sum: number, item: CartItem) => sum + item.product.price * item.quantity, 0);
 
   return (
-    <CartContext.Provider
-      value={{
-        items,
-        addToCart,
-        removeFromCart,
-        updateQuantity,
-        clearCart,
-        totalItems,
-        totalPrice
-      }}
-    >
+    <CartContext.Provider value={{ items: state.items, addItem, removeItem, updateQuantity, clearCart, totalItems, totalPrice, getItemKey }}>
       {children}
     </CartContext.Provider>
-  )
+  );
 }
 
 export function useCart() {
-  const context = useContext(CartContext)
-  if (context === undefined) {
-    throw new Error("useCart must be used within a CartProvider")
-  }
-  return context
+  const context = useContext(CartContext);
+  if (!context) throw new Error('useCart must be used within CartProvider');
+  return context;
 }

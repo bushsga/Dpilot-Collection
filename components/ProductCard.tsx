@@ -1,93 +1,84 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import Link from "next/link"
-import { Product } from "@/types/product"
-import { useCart } from "@/context/CartContext"
-import { toast } from 'react-hot-toast'
+import type { Product } from "@/types"
 
-type Props = {
-  product: Product
-}
+export default function ProductCard({ product }: { product: Product }) {
+  const totalStock = product.quantity
+  const images = product.images && product.images.length > 0 ? product.images : []
+  const [currentImg, setCurrentImg] = useState(0)
 
-export default function ProductCard({ product }: Props) {
-  const { addToCart } = useCart()
-
-  const handleAddToCart = (e: React.MouseEvent) => {
-    e.preventDefault()
-    if (product.stock <= 0) {
-      toast.error("This product is out of stock")
-      return
-    }
-    const result = addToCart(product)
-    if (result.success) {
-      toast.success(`${product.name} added to cart!`)
-    }
-  }
-
-  // Determine stock status
-  const isOutOfStock = product.stock <= 0
-  const isLowStock = product.stock > 0 && product.stock < 5
+  // Auto-slide images
+  useEffect(() => {
+    if (images.length <= 1) return
+    const timer = setInterval(() => {
+      setCurrentImg(prev => (prev + 1) % images.length)
+    }, 3000)
+    return () => clearInterval(timer)
+  }, [images.length])
 
   return (
-    <div className="bg-white shadow-sm hover:shadow-md transition overflow-hidden flex flex-col h-full">
-      <Link href={`/products/${product.id}`} className="block">
-        {product.imageUrl ? (
-          <div className="w-full h-48 bg-gray-50" style={{ height: '200px' }}>
-            <img 
-              src={product.imageUrl} 
+    <Link href={`/products/${product.id}`} className="group bg-white shadow-sm hover:shadow-md transition-shadow block">
+      <div className="aspect-square relative overflow-hidden bg-gray-100">
+        {images.length > 0 ? (
+          <>
+            {/* Current Image */}
+            <img
+              src={images[currentImg]}
               alt={product.name}
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'contain'
-              }}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             />
-          </div>
+            {/* Dots Indicator */}
+            {images.length > 1 && (
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
+                {images.map((_, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setCurrentImg(idx)
+                    }}
+                    className={`w-2 h-2 rounded-full transition-colors ${
+                      idx === currentImg ? 'bg-[#1B3A4B]' : 'bg-white/70'
+                    }`}
+                  />
+                ))}
+              </div>
+            )}
+          </>
         ) : (
-          <div className="w-full h-48 bg-gray-200 flex items-center justify-center">
-            <span className="text-gray-400">No image</span>
-          </div>
+          <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm">No Image</div>
         )}
-      </Link>
-
-      <div className="p-4 flex-1 flex flex-col">
-        <Link href={`/products/${product.id}`}>
-          <h3 className="font-medium text-lg hover:text-[#C8A75B] transition line-clamp-2">
-            {product.name}
-          </h3>
-        </Link>
-
-        <p className="text-sm text-gray-500 mt-1">{product.category}</p>
-
-        <div className="mt-2 text-xl font-semibold">
+        
+        {/* Price Tag */}
+        <div className="absolute top-3 left-3 bg-[#0A0A0A] text-white text-xs px-3 py-1 z-10">
           ₦{product.price.toLocaleString()}
         </div>
-
-        {/* Stock Status Display */}
-        <div className="mt-2">
-          {isOutOfStock ? (
-            <span className="text-red-600 font-medium">Out of Stock</span>
-          ) : isLowStock ? (
-            <span className="text-orange-600">Only {product.stock} left!</span>
-          ) : (
-            <span className="text-green-600">In Stock ({product.stock})</span>
-          )}
-        </div>
         
-        <div className="mt-4">
-          <button 
-            onClick={handleAddToCart}
-            disabled={isOutOfStock}
-            className={`w-full py-2 px-4 text-sm font-medium transition ${
-              isOutOfStock 
-                ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
-                : 'bg-[#C8A75B] text-black hover:bg-[#b8964a]'
-            }`}
-          >
-            {isOutOfStock ? 'Out of Stock' : 'Add to Cart'}
-          </button>
-        </div>
+        {/* Stock Badge */}
+        {totalStock <= 0 && (
+          <div className="absolute top-3 right-3 bg-red-500 text-white text-xs px-2 py-1 z-10">Sold Out</div>
+        )}
+        {totalStock > 0 && totalStock <= 3 && (
+          <div className="absolute top-3 right-3 bg-orange-500 text-white text-xs px-2 py-1 z-10">Only {totalStock} left</div>
+        )}
       </div>
-    </div>
+      
+      {/* Product Info */}
+      <div className="p-4">
+        <h3 className="text-sm font-medium text-[#0A0A0A] line-clamp-2 mb-1 group-hover:text-[#1B3A4B] transition-colors">
+          {product.name}
+        </h3>
+        {product.sizes && product.sizes.length > 0 && (
+          <p className="text-xs text-[#6B7280]">Sizes: {product.sizes.join(', ')}</p>
+        )}
+        {totalStock > 3 && <p className="text-xs text-green-600 mt-1">In Stock</p>}
+        {totalStock > 0 && totalStock <= 3 && <p className="text-xs text-orange-500 mt-1">Low Stock</p>}
+        {totalStock <= 0 && <p className="text-xs text-red-500 mt-1">Out of Stock</p>}
+      </div>
+    </Link>
   )
 }

@@ -1,205 +1,63 @@
 import Container from "@/components/Container"
 import ProductCard from "@/components/ProductCard"
-import Testimonials from "@/components/Testimonials"
 import HeroSlideshow from "@/components/HeroSlideshow"
-import { getProducts } from "@/lib/getProducts"
+import Testimonials from "@/components/Testimonials"
+import { createServerSupabaseClient } from "@/lib/supabase/server"
 import Link from "next/link"
+import type { Category, Product } from "@/types"
+
 
 export default async function Home() {
-  const allProducts = await getProducts()
-  // Show only first 3 products on homepage
-  const featuredProducts = allProducts.slice(0, 3)
+  const supabase = await createServerSupabaseClient();
+  const { data: categories } = await supabase.from('categories').select('*').order('name');
+  const { data: featured } = await supabase.from('products').select('*').eq('in_stock', true).eq('featured', true).limit(8).order('created_at', { ascending: false });
+  const { data: latest } = await supabase.from('products').select('*').eq('in_stock', true).limit(8).order('created_at', { ascending: false });
+  const products = (featured && featured.length > 0 ? featured : latest || []) as Product[];
 
   return (
-    <main className="w-full">
-
-      {/* HERO */}
+    <main>
       <HeroSlideshow />
-      {/* TRUST SECTION */}
-      <section className="py-16 bg-white">
+
+      <section className="py-20 bg-white">
         <Container>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-            <div>
-              <div className="text-xl sm:text-2xl font-semibold">500+</div>
-              <div className="text-sm text-gray-600">
-                Installations Completed
-              </div>
-            </div>
-
-            <div>
-              <div className="text-xl sm:text-2xl font-semibold">₦2M+</div>
-              <div className="text-sm text-gray-600">
-                High-End Units Delivered
-              </div>
-            </div>
-
-            <div>
-              <div className="text-xl sm:text-2xl font-semibold">Nationwide</div>
-              <div className="text-sm text-gray-600">
-                Delivery Coverage
-              </div>
-            </div>
-
-            <div>
-              <div className="text-xl sm:text-2xl font-semibold">24/7</div>
-              <div className="text-sm text-gray-600">
-                Technical Support
-              </div>
-            </div>
+          <h2 className="text-2xl font-bold text-center mb-8">Shop by Category</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            {(categories || []).map((cat: Category) => (
+              <Link key={cat.id} href={`/categories/${cat.slug}`} className="group bg-[#F7F5F2] p-10 text-center border hover:border-[#1B3A4B] transition-all">
+                <h3 className="text-lg font-semibold text-[#0A0A0A] group-hover:text-[#1B3A4B] transition-colors">{cat.name}</h3>
+              </Link>
+            ))}
           </div>
         </Container>
       </section>
 
-      {/* FEATURED PRODUCTS */}
-      <section className="py-20 bg-gray-50">
+      <section className="py-20 bg-[#F7F5F2]">
         <Container>
-          <div className="mb-12">
-            <h2 className="text-2xl sm:text-3xl font-semibold">
-              Featured Power Systems
-            </h2>
-            <p className="text-gray-600 mt-3 max-w-xl">
-              Carefully selected premium solar and backup solutions.
-            </p>
+          <div className="flex justify-between items-center mb-8">
+            <h2 className="text-2xl font-bold text-[#0A0A0A]">{featured?.length ? 'Featured Picks' : 'New Arrivals'}</h2>
+            <Link href="/products" className="text-sm text-[#1B3A4B] hover:underline">View All →</Link>
           </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-8">
-            {featuredProducts.length > 0 ? (
-              featuredProducts.map((product) => (
-                <ProductCard key={product.id} product={product} />
-              ))
-            ) : (
-              // Show placeholder if no products yet
-              <>
-                <div className="bg-white p-6 shadow-sm">
-                  <div className="h-40 bg-gray-200 mb-4 w-full" />
-                  <h3 className="font-medium">EcoFlow Delta Pro</h3>
-                  <p className="text-sm text-gray-500 mt-2">
-                    High-capacity portable power
-                  </p>
-                </div>
-
-                <div className="bg-white p-6 shadow-sm">
-                  <div className="h-40 bg-gray-200 mb-4 w-full" />
-                  <h3 className="font-medium">Hybrid Home Backup System</h3>
-                  <p className="text-sm text-gray-500 mt-2">
-                    Full home solar integration
-                  </p>
-                </div>
-
-                <div className="bg-white p-6 shadow-sm">
-                  <div className="h-40 bg-gray-200 mb-4 w-full" />
-                  <h3 className="font-medium">Smart Security Setup</h3>
-                  <p className="text-sm text-gray-500 mt-2">
-                    CCTV & smart monitoring
-                  </p>
-                </div>
-              </>
-            )}
-          </div>
+          {products.length === 0 ? (
+            <p className="text-center text-[#6B7280] py-20">No products yet. Check back soon!</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+              {products.map((product: Product) => <ProductCard key={product.id} product={product} />)}
+            </div>
+          )}
         </Container>
       </section>
 
- {/* WHY CHOOSE US SECTION - REPLACES INSTALLATION SHOWCASE */}
-<section className="py-24 bg-white">
-  <Container>
-    <div className="text-center mb-12">
-      <h2 className="text-3xl font-semibold">Why Choose THE GRID</h2>
-      <p className="text-gray-600 mt-3 max-w-xl mx-auto">
-        We don't just sell equipment; we sell the comfort of uninterrupted power.
-      </p>
-    </div>
-
-    <div className="grid md:grid-cols-2 gap-8">
-      {/* Left side - Image */}
-      <div className="h-96 bg-gray-200 w-full rounded-sm overflow-hidden">
-        <img 
-          src="/images/solar-5.jpg" 
-          alt="Solar Installation"
-          className="w-full h-full object-cover"
-        />
-      </div>
-
-      {/* Right side - Why Choose Us points */}
-      <div className="space-y-6">
-        <div className="flex gap-4">
-          <div className="w-12 h-12 bg-[#C8A75B]/10 rounded-full flex items-center justify-center flex-shrink-0">
-            <span className="text-[#C8A75B] text-xl">✓</span>
-          </div>
-          <div>
-            <h3 className="text-xl font-semibold mb-2">Reliability (Tested & Trusted)</h3>
-            <p className="text-gray-600">
-              We only stock and install products guaranteed to deliver long-term performance.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex gap-4">
-          <div className="w-12 h-12 bg-[#C8A75B]/10 rounded-full flex items-center justify-center flex-shrink-0">
-            <span className="text-[#C8A75B] text-xl">✓</span>
-          </div>
-          <div>
-            <h3 className="text-xl font-semibold mb-2">Excellence</h3>
-            <p className="text-gray-600">
-              From our neat, modern installations to our high-end showroom, we maintain premium standards in everything we do.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex gap-4">
-          <div className="w-12 h-12 bg-[#C8A75B]/10 rounded-full flex items-center justify-center flex-shrink-0">
-            <span className="text-[#C8A75B] text-xl">✓</span>
-          </div>
-          <div>
-            <h3 className="text-xl font-semibold mb-2">Accessibility</h3>
-            <p className="text-gray-600">
-              Distance is never a barrier; we ensure fast, secure, and guaranteed nationwide delivery.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex gap-4">
-          <div className="w-12 h-12 bg-[#C8A75B]/10 rounded-full flex items-center justify-center flex-shrink-0">
-            <span className="text-[#C8A75B] text-xl">✓</span>
-          </div>
-          <div>
-            <h3 className="text-xl font-semibold mb-2">Customer Peace of Mind</h3>
-            <p className="text-gray-600">
-              We don't just sell equipment; we sell the comfort of uninterrupted power and zero generator stress.
-            </p>
-          </div>
-        </div>
-
-        <Link href="/contact">
-          <button className="mt-6 bg-[#C8A75B] text-black px-8 py-3 text-sm font-medium hover:bg-[#b8964a] transition">
-            Book Installation
-          </button>
-        </Link>
-      </div>
-    </div>
-  </Container>
-</section>
       <Testimonials />
 
-      {/* WATT CALCULATOR CTA */}
-      <section className="py-20 bg-[#0B0F19] text-white text-center">
+      <section className="py-12 bg-white border-t">
         <Container>
-          <h2 className="text-2xl sm:text-3xl font-semibold">
-            Not Sure What System You Need?
-          </h2>
-
-          <p className="mt-4 text-gray-300 text-sm sm:text-base">
-            Use our smart watt calculator to estimate the right solar capacity
-            for your home or business.
-          </p>
-
-         <Link href="/calculator">
-  <button className="mt-8 bg-[#C8A75B] text-black px-8 py-3 text-sm font-medium w-full sm:w-auto">
-    Calculate My Power Needs
-  </button>
-</Link>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
+            <div><h3 className="font-semibold mb-2">Original Quality</h3><p className="text-sm text-[#6B7280]">100% authentic products</p></div>
+            <div><h3 className="font-semibold mb-2">Fully Boxed</h3><p className="text-sm text-[#6B7280]">Complete with original packaging</p></div>
+            <div><h3 className="font-semibold mb-2">Fast Delivery</h3><p className="text-sm text-[#6B7280]">Nationwide shipping</p></div>
+          </div>
         </Container>
       </section>
-
     </main>
-  )
+  );
 }

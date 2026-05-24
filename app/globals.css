@@ -6,26 +6,25 @@ body {
 }
 
 :root {
-  --brand-black: #0B0F19;
-  --brand-gold: #C8A75B;
-  --brand-gray: #F5F5F5;
+  --brand-primary: #0A0A0A;
+  --brand-secondary: #F7F5F2;
+  --brand-accent: #1B3A4B;
+  --brand-muted: #6B7280;
+  --brand-surface: #FFFFFF;
 }
 
-/* Apply Montserrat to body - but keep it as variable reference */
 body {
-  background: white;
-  color: #0B0F19;
-  font-family: var(--font-montserrat), 'Montserrat', system-ui, sans-serif;
+  background: var(--brand-secondary);
+  color: var(--brand-primary);
+  font-family: 'Inter', system-ui, sans-serif;
 }
 
-/* Headings also use Montserrat */
 h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-montserrat), 'Montserrat', system-ui, sans-serif;
+  font-family: 'Inter', system-ui, sans-serif;
   font-weight: 600;
   letter-spacing: -0.02em;
 }
 
-/* Specific heading weights */
 h1 {
   font-weight: 700;
   letter-spacing: -0.03em;
@@ -37,13 +36,4 @@ h2 {
 
 h3 {
   font-weight: 600;
-}
-
-/* Utility classes */
-.font-montserrat {
-  font-family: var(--font-montserrat), 'Montserrat', system-ui, sans-serif;
-}
-
-.font-serif {
-  font-family: var(--font-playfair), Georgia, serif;
 }

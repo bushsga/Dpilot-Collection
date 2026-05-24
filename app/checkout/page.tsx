@@ -2,196 +2,161 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { db } from "@/lib/firebase"
-import { collection, addDoc, doc, getDoc, updateDoc } from "firebase/firestore"
 import { useCart } from "@/context/CartContext"
 import Container from "@/components/Container"
-import PaystackPayment from "@/components/PaystackPayment"
 import Link from "next/link"
+import { ArrowLeft } from "lucide-react"
+import { PAYSTACK_PUBLIC_KEY } from "@/lib/paystack"
+
+declare global { interface Window { PaystackPop: { setup: (o: any) => { openIframe: () => void } } } }
 
 export default function CheckoutPage() {
   const { items, totalPrice, clearCart } = useCart()
   const router = useRouter()
+  const [mounted, setMounted] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [formData, setFormData] = useState({
-    fullName: "",
-    email: "",
-    phone: "",
-    address: "",
-    city: "",
-    state: ""
-  })
+  const [error, setError] = useState("")
+  const [form, setForm] = useState({ name: "", email: "", phone: "", address: "" })
 
-  useEffect(() => {
-    if (items.length === 0) {
-      router.push("/products")
-    }
-  }, [items, router])
+  useEffect(() => { setMounted(true) }, [])
+  if (!mounted) return <div className="py-20 text-center">Loading...</div>
+  if (items.length === 0) return (
+    <main className="py-20 min-h-screen">
+      <Container>
+        <div className="text-center">
+          <h1 className="text-2xl font-bold mb-4">Your cart is empty</h1>
+          <Link href="/products" className="text-[#1B3A4B] underline">Go shopping</Link>
+        </div>
+      </Container>
+    </main>
+  )
 
-  if (items.length === 0) return null
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setForm(p => ({ ...p, [e.target.name]: e.target.value }))
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target
-    setFormData(prev => ({ ...prev, [name]: value }))
-  }
-
-  // Update product stock
-  const updateProductStock = async (productId: string, quantityPurchased: number) => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault(); setError(""); setLoading(true)
     try {
-      const productRef = doc(db, "products", productId)
-      const productSnap = await getDoc(productRef)
-      
-      if (productSnap.exists()) {
-        const currentStock = productSnap.data().stock || 0
-        const newStock = Math.max(0, currentStock - quantityPurchased)
-        
-        await updateDoc(productRef, {
-          stock: newStock,
-          updatedAt: new Date()
+      const res = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer_name: form.name, customer_email: form.email,
+          customer_phone: form.phone, customer_address: form.address,
+          items: items.map(i => ({
+            product_id: i.product.id, product_name: i.product.name,
+            variant_id: i.variant?.id, color_name: i.variant?.color_name,
+            size: i.size, price: i.product.price, quantity: i.quantity
+          })),
+          total_amount: totalPrice
         })
-        console.log(`✅ Stock updated for ${productId}: ${currentStock} → ${newStock}`)
-      }
-    } catch (error) {
-      console.error("❌ Error updating stock:", error)
-    }
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      window.PaystackPop.setup({
+        key: PAYSTACK_PUBLIC_KEY, email: form.email,
+        amount: totalPrice * 100, currency: 'NGN',
+        ref: data.paystackReference, metadata: { order_id: data.orderId },
+        onClose: () => { setLoading(false); setError("Payment cancelled.") },
+        callback: (r: any) => verifyPayment(r.reference, data.orderId)
+      }).openIframe()
+    } catch (err: any) { setError(err.message); setLoading(false) }
   }
 
-  // Save order and update stock – returns the payment reference
-  const saveOrderToFirebase = async (paymentReference: string) => {
+  const verifyPayment = async (ref: string, orderId: string) => {
     try {
-      const orderData = {
-        customer: formData,
-        items: items.map(item => ({
-          productId: item.product.id,
-          name: item.product.name,
-          price: item.product.price,
-          quantity: item.quantity,
-          total: item.product.price * item.quantity
-        })),
-        totalAmount: totalPrice,
-        paymentReference: paymentReference,
-        paymentStatus: "paid",
-        orderStatus: "processing",
-        waybill: "",
-        createdAt: new Date(),
-        updatedAt: new Date()
-      }
-
-      await addDoc(collection(db, "orders"), orderData)
-      console.log("✅ Order saved with reference:", paymentReference)
-      
-      // Update stock for each product
-      for (const item of items) {
-        await updateProductStock(item.product.id, item.quantity)
-      }
-      
-      clearCart()
-      
-      // Return the reference so we can redirect
-      return paymentReference
-    } catch (error) {
-      console.error("❌ Error saving order:", error)
-      throw error
-    }
-  }
-
-  const handlePaymentSuccess = async (response: any) => {
-    console.log("💰 Payment successful!", response)
-    try {
-      const ref = await saveOrderToFirebase(response.reference)
-      // Redirect to success page with payment reference
-      window.location.href = `/checkout/success?paymentReference=${ref}`
-    } catch (error) {
-      console.error("Error after payment:", error)
-      alert("Order saved but could not redirect. Please check your email for confirmation.")
-    }
-  }
-
-  const handlePaymentClose = () => {
-    alert("Payment cancelled. You can try again.")
+      const res = await fetch('/api/verify-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reference: ref, orderId })
+      })
+      const data = await res.json()
+      if (data.success) {
+        try {
+          const { sendOrderEmails } = await import('@/lib/email')
+          const itemsList = items.map(i => `${i.product.name} (Size: ${i.size || 'N/A'}) x${i.quantity}`).join(', ')
+          await sendOrderEmails({
+            orderId, customer_name: form.name, customer_email: form.email,
+            customer_phone: form.phone, customer_address: form.address,
+            items_list: itemsList, total_amount: totalPrice
+          })
+        } catch {}
+        clearCart(); router.push('/checkout/success')
+      } else { setError(data.error || 'Verification failed'); setLoading(false) }
+    } catch { setError('Verification failed'); setLoading(false) }
   }
 
   return (
-    <main className="py-20 bg-white min-h-screen">
+    <main className="py-12 md:py-20 bg-white min-h-screen">
       <Container>
-        <h1 className="text-3xl font-semibold mb-8">Checkout</h1>
+        {/* Back link */}
+        <Link href="/cart" className="inline-flex items-center gap-2 text-sm text-[#6B7280] hover:text-[#1B3A4B] mb-6 transition-colors">
+          <ArrowLeft size={16} /> Back to Cart
+        </Link>
 
-        <div className="grid lg:grid-cols-3 gap-8">
-          {/* Checkout Form */}
-          <div className="lg:col-span-2">
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Full Name *</label>
-                <input type="text" name="fullName" value={formData.fullName} onChange={handleInputChange} required className="w-full border p-3 rounded-sm" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Email *</label>
-                <input type="email" name="email" value={formData.email} onChange={handleInputChange} required className="w-full border p-3 rounded-sm" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Phone Number *</label>
-                <input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} required className="w-full border p-3 rounded-sm" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Delivery Address *</label>
-                <input type="text" name="address" value={formData.address} onChange={handleInputChange} required className="w-full border p-3 rounded-sm" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">City *</label>
-                  <input type="text" name="city" value={formData.city} onChange={handleInputChange} required className="w-full border p-3 rounded-sm" />
+        <h1 className="text-2xl md:text-3xl font-semibold mb-8">Checkout</h1>
+
+        {/* Mobile: Order Summary FIRST (above form) */}
+        <div className="block lg:hidden mb-8">
+          <div className="bg-[#F7F5F2] p-6">
+            <h2 className="text-lg font-bold mb-4 pb-3 border-b">Your Order</h2>
+            <div className="space-y-2 mb-4">
+              {items.map((item) => (
+                <div key={`${item.product.id}-${item.variant?.id || 'x'}-${item.size}`} className="flex justify-between text-sm">
+                  <span className="truncate max-w-[180px]">{item.product.name} {item.variant && `(${item.variant.color_name})`} x{item.quantity}</span>
+                  <span className="font-medium whitespace-nowrap">₦{(item.product.price * item.quantity).toLocaleString()}</span>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">State *</label>
-                  <input type="text" name="state" value={formData.state} onChange={handleInputChange} required className="w-full border p-3 rounded-sm" />
-                </div>
-              </div>
+              ))}
+            </div>
+            <div className="border-t pt-3 flex justify-between font-bold text-lg">
+              <span>Total</span>
+              <span className="text-[#1B3A4B]">₦{totalPrice.toLocaleString()}</span>
             </div>
           </div>
+        </div>
 
-          {/* Order Summary */}
-          <div className="lg:col-span-1">
-            <div className="bg-gray-50 p-6 sticky top-4">
-              <h2 className="text-xl font-semibold mb-4">Order Summary</h2>
-              
-              <div className="space-y-3 max-h-96 overflow-auto mb-4">
+        <div className="grid lg:grid-cols-3 gap-8">
+          {/* Checkout Form - Full width on mobile, 2/3 on desktop */}
+          <form onSubmit={handleSubmit} className="lg:col-span-2 space-y-4">
+            {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm p-4">{error}</div>}
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Full Name *</label>
+              <input name="name" value={form.name} onChange={handleChange} required className="w-full border p-3" placeholder="John Doe" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Email *</label>
+              <input type="email" name="email" value={form.email} onChange={handleChange} required className="w-full border p-3" placeholder="john@example.com" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Phone Number *</label>
+              <input type="tel" name="phone" value={form.phone} onChange={handleChange} required className="w-full border p-3" placeholder="08012345678" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Delivery Address *</label>
+              <textarea name="address" value={form.address} onChange={handleChange} required rows={3} className="w-full border p-3 resize-none" placeholder="Enter your full delivery address" />
+            </div>
+
+            <button type="submit" disabled={loading} className="w-full bg-[#1B3A4B] text-white py-4 font-semibold hover:bg-[#0A0A0A] transition disabled:opacity-50 text-sm">
+              {loading ? 'Processing...' : `Pay ₦${totalPrice.toLocaleString()}`}
+            </button>
+          </form>
+
+          {/* Order Summary - Hidden on mobile, visible on desktop (right side) */}
+          <div className="hidden lg:block lg:col-span-1">
+            <div className="bg-[#F7F5F2] p-6 sticky top-24">
+              <h2 className="text-lg font-bold mb-4 pb-3 border-b">Your Order</h2>
+              <div className="space-y-2 mb-4 max-h-80 overflow-y-auto">
                 {items.map((item) => (
-                  <div key={item.product.id} className="flex justify-between text-sm">
-                    <span>{item.product.name} x {item.quantity}</span>
-                    <span>₦{(item.product.price * item.quantity).toLocaleString()}</span>
+                  <div key={`${item.product.id}-${item.variant?.id || 'x'}-${item.size}`} className="flex justify-between text-sm">
+                    <span className="truncate max-w-[180px]">{item.product.name} {item.variant && `(${item.variant.color_name})`} x{item.quantity}</span>
+                    <span className="font-medium whitespace-nowrap">₦{(item.product.price * item.quantity).toLocaleString()}</span>
                   </div>
                 ))}
               </div>
-
-              <div className="border-t pt-4 space-y-2">
-                <div className="flex justify-between font-semibold">
-                  <span>Total</span>
-                  <span>₦{totalPrice.toLocaleString()}</span>
-                </div>
+              <div className="border-t pt-3 flex justify-between font-bold text-lg">
+                <span>Total</span>
+                <span className="text-[#1B3A4B]">₦{totalPrice.toLocaleString()}</span>
               </div>
-
-              {!formData.fullName || !formData.email || !formData.phone ? (
-                <button disabled className="w-full bg-gray-300 text-black py-3 mt-4 cursor-not-allowed">
-                  Complete Form First
-                </button>
-              ) : (
-                <div className="mt-4">
-                  <PaystackPayment
-                    email={formData.email}
-                    fullName={formData.fullName}
-                    phone={formData.phone}
-                    amount={totalPrice}
-                    onSuccess={handlePaymentSuccess}
-                    onClose={handlePaymentClose}
-                  />
-                </div>
-              )}
-
-              <Link href="/cart">
-                <button className="w-full border py-3 mt-4 text-sm hover:bg-gray-100">
-                  Return to Cart
-                </button>
-              </Link>
             </div>
           </div>
         </div>
