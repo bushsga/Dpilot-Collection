@@ -19,7 +19,7 @@ export default function CheckoutPage() {
   const [form, setForm] = useState({ name: "", email: "", phone: "", address: "" })
 
   useEffect(() => { setMounted(true) }, [])
-  if (!mounted) return <div className="py-20 text-center">Loading...</div>
+  if (!mounted) return <div className="py-20 text-center">Loading checkout...</div>
   if (items.length === 0) return (
     <main className="py-20 min-h-screen">
       <Container>
@@ -32,35 +32,6 @@ export default function CheckoutPage() {
   )
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setForm(p => ({ ...p, [e.target.name]: e.target.value }))
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault(); setError(""); setLoading(true)
-    try {
-      const res = await fetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customer_name: form.name, customer_email: form.email,
-          customer_phone: form.phone, customer_address: form.address,
-          items: items.map(i => ({
-            product_id: i.product.id, product_name: i.product.name,
-            variant_id: i.variant?.id, color_name: i.variant?.color_name,
-            size: i.size, price: i.product.price, quantity: i.quantity
-          })),
-          total_amount: totalPrice
-        })
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
-      window.PaystackPop.setup({
-        key: PAYSTACK_PUBLIC_KEY, email: form.email,
-        amount: totalPrice * 100, currency: 'NGN',
-        ref: data.paystackReference, metadata: { order_id: data.orderId },
-        onClose: () => { setLoading(false); setError("Payment cancelled.") },
-        callback: (r: any) => verifyPayment(r.reference, data.orderId)
-      }).openIframe()
-    } catch (err: any) { setError(err.message); setLoading(false) }
-  }
 
   const verifyPayment = async (ref: string, orderId: string) => {
     try {
@@ -80,9 +51,94 @@ export default function CheckoutPage() {
             items_list: itemsList, total_amount: totalPrice
           })
         } catch {}
-        clearCart(); router.push('/checkout/success')
-      } else { setError(data.error || 'Verification failed'); setLoading(false) }
-    } catch { setError('Verification failed'); setLoading(false) }
+        clearCart()
+        router.push('/checkout/success')
+      } else {
+        setError(data.error || 'Verification failed')
+        setLoading(false)
+      }
+    } catch {
+      setError('Verification failed. Please contact support.')
+      setLoading(false)
+    }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError("")
+    setLoading(true)
+
+    try {
+      // 1. Create order in database
+      const res = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer_name: form.name,
+          customer_email: form.email,
+          customer_phone: form.phone,
+          customer_address: form.address,
+          items: items.map(i => ({
+            product_id: i.product.id,
+            product_name: i.product.name,
+            variant_id: i.variant?.id,
+            color_name: i.variant?.color_name,
+            size: i.size,
+            price: i.product.price,
+            quantity: i.quantity
+          })),
+          total_amount: totalPrice
+        })
+      })
+
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to create order')
+
+      // 2. Wait for Paystack script to load
+      const waitForPaystack = (): Promise<void> => {
+        return new Promise((resolve, reject) => {
+          if (typeof window !== 'undefined' && window.PaystackPop) {
+            resolve()
+            return
+          }
+          let attempts = 0
+          const interval = setInterval(() => {
+            attempts++
+            if (typeof window !== 'undefined' && window.PaystackPop) {
+              clearInterval(interval)
+              resolve()
+            } else if (attempts > 30) {
+              clearInterval(interval)
+              reject(new Error('Payment system is still loading. Please refresh the page and try again.'))
+            }
+          }, 500)
+        })
+      }
+
+      await waitForPaystack()
+
+      // 3. Open Paystack payment popup
+      const handler = window.PaystackPop.setup({
+        key: PAYSTACK_PUBLIC_KEY,
+        email: form.email,
+        amount: totalPrice * 100,
+        currency: 'NGN',
+        ref: data.paystackReference,
+        metadata: { order_id: data.orderId },
+        onClose: () => {
+          setLoading(false)
+          setError("Payment was not completed. You can try again.")
+        },
+        callback: (response: any) => {
+          verifyPayment(response.reference, data.orderId)
+        }
+      })
+
+      handler.openIframe()
+    } catch (err: any) {
+      setError(err.message || 'Something went wrong')
+      setLoading(false)
+    }
   }
 
   return (
@@ -95,7 +151,7 @@ export default function CheckoutPage() {
 
         <h1 className="text-2xl md:text-3xl font-semibold mb-8">Checkout</h1>
 
-        {/* Mobile: Order Summary FIRST (above form) */}
+        {/* Mobile: Order Summary FIRST */}
         <div className="block lg:hidden mb-8">
           <div className="bg-[#F7F5F2] p-6">
             <h2 className="text-lg font-bold mb-4 pb-3 border-b">Your Order</h2>
@@ -115,7 +171,7 @@ export default function CheckoutPage() {
         </div>
 
         <div className="grid lg:grid-cols-3 gap-8">
-          {/* Checkout Form - Full width on mobile, 2/3 on desktop */}
+          {/* Checkout Form */}
           <form onSubmit={handleSubmit} className="lg:col-span-2 space-y-4">
             {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm p-4">{error}</div>}
 
@@ -141,7 +197,7 @@ export default function CheckoutPage() {
             </button>
           </form>
 
-          {/* Order Summary - Hidden on mobile, visible on desktop (right side) */}
+          {/* Desktop Order Summary */}
           <div className="hidden lg:block lg:col-span-1">
             <div className="bg-[#F7F5F2] p-6 sticky top-24">
               <h2 className="text-lg font-bold mb-4 pb-3 border-b">Your Order</h2>

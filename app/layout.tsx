@@ -6,6 +6,7 @@ import { AuthProvider } from "@/context/AuthContext"
 import { Toaster } from 'react-hot-toast'
 import type { Metadata } from "next"
 import WhatsAppButton from "@/components/WhatsAppButton"
+import Script from "next/script"
 
 export const metadata: Metadata = {
   title: {
@@ -24,17 +25,28 @@ export default function RootLayout({
     <html lang="en">
       <body className="font-sans">
         <AuthProvider>
-                 <CartProvider>
-                       <Navbar />
-          <div className="pt-[73px]">
-            <Toaster position="top-right" />
-            {children}
-          </div>
-          <Footer />
-          <WhatsAppButton />
-        </CartProvider>
+          <CartProvider>
+            <Navbar />
+            <div className="pt-[73px]">
+              <Toaster position="top-right" />
+              {children}
+            </div>
+            <Footer />
+            <WhatsAppButton />
+          </CartProvider>
         </AuthProvider>
 
+        {/* Paystack Script - Loads before user interacts */}
+        <Script
+          src="https://js.paystack.co/v2/inline.js"
+          strategy="beforeInteractive"
+        />
+        
+        {/* Cloudinary Upload Widget */}
+        <Script
+          src="https://upload-widget.cloudinary.com/global/all.js"
+          strategy="lazyOnload"
+        />
       </body>
     </html>
   )
