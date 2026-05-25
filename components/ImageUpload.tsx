@@ -13,13 +13,18 @@ interface ImageUploadProps {
 export default function ImageUpload({ images, onChange, maxImages = 5 }: ImageUploadProps) {
   
   const openWidget = useCallback(() => {
-    (window as any).cloudinary.createUploadWidget(
+    const widget = (window as any).cloudinary.createUploadWidget(
       {
         cloudName: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
         uploadPreset: 'dpilot-products',
         maxFiles: maxImages - images.length,
         multiple: true,
         sources: ['local', 'url', 'camera'],
+        // Add mobile-friendly options
+        clientAllowedFormats: ['jpg', 'jpeg', 'png', 'webp'],
+        maxFileSize: 10000000, // 10MB
+        showAdvancedOptions: false,
+        cropping: false,
         styles: {
           palette: {
             window: '#FFFFFF',
@@ -43,26 +48,39 @@ export default function ImageUpload({ images, onChange, maxImages = 5 }: ImageUp
           console.error('Upload error:', error);
         }
       }
-    ).open();
+    );
+    widget.open();
   }, [images, onChange, maxImages]);
 
   const handleUpload = useCallback(() => {
-    if (!(window as any).cloudinary) {
-      // Wait and retry instead of showing error immediately
-      let attempts = 0;
-      const checkCloudinary = setInterval(() => {
-        attempts++;
-        if ((window as any).cloudinary) {
-          clearInterval(checkCloudinary);
-          openWidget();
-        } else if (attempts > 30) {
-          clearInterval(checkCloudinary);
-          alert('Image uploader is taking too long. Please refresh the page and try again.');
-        }
-      }, 500);
+    // Check if Cloudinary is loaded
+    if (typeof window !== 'undefined' && (window as any).cloudinary) {
+      openWidget();
       return;
     }
-    openWidget();
+
+    // If not loaded, wait for it
+    let attempts = 0;
+    const maxAttempts = 50; // 25 seconds on mobile
+    const checkCloudinary = setInterval(() => {
+      attempts++;
+      if (typeof window !== 'undefined' && (window as any).cloudinary) {
+        clearInterval(checkCloudinary);
+        openWidget();
+      } else if (attempts >= maxAttempts) {
+        clearInterval(checkCloudinary);
+        // Try loading the script dynamically as fallback
+        const script = document.createElement('script');
+        script.src = 'https://upload-widget.cloudinary.com/global/all.js';
+        script.onload = () => {
+          setTimeout(() => openWidget(), 500);
+        };
+        script.onerror = () => {
+          alert('Could not load image uploader. Please check your internet connection and try again.');
+        };
+        document.body.appendChild(script);
+      }
+    }, 500);
   }, [openWidget]);
 
   const removeImage = (index: number) => {
@@ -89,6 +107,9 @@ export default function ImageUpload({ images, onChange, maxImages = 5 }: ImageUp
           <FiUpload /> Upload Images ({images.length}/{maxImages})
         </button>
       )}
+      <p className="text-xs text-gray-400 mt-2">
+        Supported: JPG, PNG, WEBP. Max 10MB each.
+      </p>
     </div>
   );
 }
