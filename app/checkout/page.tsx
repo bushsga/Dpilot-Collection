@@ -6,7 +6,6 @@ import { useCart } from "@/context/CartContext"
 import Container from "@/components/Container"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
-import { PAYSTACK_PUBLIC_KEY } from "@/lib/paystack"
 
 declare global { interface Window { PaystackPop: { setup: (o: any) => { openIframe: () => void } } } }
 
@@ -94,7 +93,10 @@ export default function CheckoutPage() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to create order')
 
-      // 2. Wait for Paystack script to load
+      // 2. Read Paystack key at runtime (not from module)
+      const PAYSTACK_KEY = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || ''
+
+      // 3. Wait for Paystack script to load
       const waitForPaystack = (): Promise<void> => {
         return new Promise((resolve, reject) => {
           if (typeof window !== 'undefined' && window.PaystackPop) {
@@ -107,7 +109,7 @@ export default function CheckoutPage() {
             if (typeof window !== 'undefined' && window.PaystackPop) {
               clearInterval(interval)
               resolve()
-            } else if (attempts > 30) {
+            } else if (attempts > 60) {
               clearInterval(interval)
               reject(new Error('Payment system is still loading. Please refresh the page and try again.'))
             }
@@ -117,9 +119,9 @@ export default function CheckoutPage() {
 
       await waitForPaystack()
 
-      // 3. Open Paystack payment popup
+      // 4. Open Paystack payment popup
       const handler = window.PaystackPop.setup({
-        key: PAYSTACK_PUBLIC_KEY,
+        key: PAYSTACK_KEY,
         email: form.email,
         amount: totalPrice * 100,
         currency: 'NGN',
