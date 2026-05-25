@@ -94,7 +94,7 @@ export default function CheckoutPage() {
       if (!res.ok) throw new Error(data.error || 'Failed to create order')
 
       // 2. Read Paystack key at runtime (not from module)
-      const PAYSTACK_KEY = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || ''
+      const PAYSTACK_KEY = 'pk_test_af9d4f228af98e5c38b4689a99cb87f5ea279c02'
 
       // 3. Wait for Paystack script to load
       const waitForPaystack = (): Promise<void> => {
