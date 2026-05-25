@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback } from 'react';
-import { FiUpload, FiX } from 'react-icons/fi';
+import { useRef, useState } from 'react';
+import { FiUpload, FiX, FiLoader } from 'react-icons/fi';
 import Image from 'next/image';
 
 interface ImageUploadProps {
@@ -11,85 +11,66 @@ interface ImageUploadProps {
 }
 
 export default function ImageUpload({ images, onChange, maxImages = 5 }: ImageUploadProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
   
-  const openWidget = useCallback(() => {
-    const widget = (window as any).cloudinary.createUploadWidget(
-      {
-        cloudName: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
-        uploadPreset: 'dpilot-products',
-        maxFiles: maxImages - images.length,
-        multiple: true,
-        sources: ['local', 'url', 'camera'],
-        // Add mobile-friendly options
-        clientAllowedFormats: ['jpg', 'jpeg', 'png', 'webp'],
-        maxFileSize: 10000000, // 10MB
-        showAdvancedOptions: false,
-        cropping: false,
-        styles: {
-          palette: {
-            window: '#FFFFFF',
-            windowBorder: '#1B3A4B',
-            tabIcon: '#1B3A4B',
-            textDark: '#0A0A0A',
-            textLight: '#FFFFFF',
-            link: '#1B3A4B',
-            action: '#1B3A4B',
-            inProgress: '#1B3A4B',
-            complete: '#0A0A0A',
-            error: '#CC0000',
-          },
-        },
-      },
-      (error: any, result: any) => {
-        if (!error && result && result.event === 'success') {
-          onChange([...images, result.info.secure_url]);
-        }
-        if (error) {
-          console.error('Upload error:', error);
-        }
-      }
-    );
-    widget.open();
-  }, [images, onChange, maxImages]);
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
-  const handleUpload = useCallback(() => {
-    // Check if Cloudinary is loaded
-    if (typeof window !== 'undefined' && (window as any).cloudinary) {
-      openWidget();
-      return;
+    setUploading(true);
+    const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+    const uploadPreset = 'dpilot-products';
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      
+      if (file.size > 10000000) {
+        alert(`${file.name} is too large. Max 10MB.`);
+        continue;
+      }
+
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('upload_preset', uploadPreset);
+
+      try {
+        const res = await fetch(
+          `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+          { method: 'POST', body: formData }
+        );
+        const data = await res.json();
+        if (data.secure_url) {
+          onChange([...images, data.secure_url]);
+        } else {
+          alert('Upload failed: ' + (data.error?.message || 'Unknown error'));
+        }
+      } catch (err) {
+        alert('Upload failed. Check your connection.');
+      }
     }
-
-    // If not loaded, wait for it
-    let attempts = 0;
-    const maxAttempts = 50; // 25 seconds on mobile
-    const checkCloudinary = setInterval(() => {
-      attempts++;
-      if (typeof window !== 'undefined' && (window as any).cloudinary) {
-        clearInterval(checkCloudinary);
-        openWidget();
-      } else if (attempts >= maxAttempts) {
-        clearInterval(checkCloudinary);
-        // Try loading the script dynamically as fallback
-        const script = document.createElement('script');
-        script.src = 'https://upload-widget.cloudinary.com/global/all.js';
-        script.onload = () => {
-          setTimeout(() => openWidget(), 500);
-        };
-        script.onerror = () => {
-          alert('Could not load image uploader. Please check your internet connection and try again.');
-        };
-        document.body.appendChild(script);
-      }
-    }, 500);
-  }, [openWidget]);
+    
+    setUploading(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
 
   const removeImage = (index: number) => {
-    const newImages = images.filter((_, i) => i !== index);
-    onChange(newImages);
+    onChange(images.filter((_, i) => i !== index));
   };
 
   return (
     <div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        onChange={handleFileUpload}
+        className="hidden"
+      />
+      
       {images.length > 0 && (
         <div className="flex flex-wrap gap-4 mb-4">
           {images.map((img, i) => (
@@ -102,14 +83,27 @@ export default function ImageUpload({ images, onChange, maxImages = 5 }: ImageUp
           ))}
         </div>
       )}
+      
       {images.length < maxImages && (
-        <button type="button" onClick={handleUpload} className="flex items-center gap-2 border-2 border-dashed border-gray-300 px-6 py-4 text-sm text-gray-500 hover:border-[#1B3A4B] hover:text-[#1B3A4B] transition-colors">
-          <FiUpload /> Upload Images ({images.length}/{maxImages})
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
+          className="flex items-center gap-2 border-2 border-dashed border-gray-300 px-6 py-4 text-sm text-gray-500 hover:border-[#1B3A4B] hover:text-[#1B3A4B] transition-colors disabled:opacity-50"
+        >
+          {uploading ? (
+            <>
+              <FiLoader className="animate-spin" />
+              Uploading...
+            </>
+          ) : (
+            <>
+              <FiUpload />
+              Upload Images ({images.length}/{maxImages})
+            </>
+          )}
         </button>
       )}
-      <p className="text-xs text-gray-400 mt-2">
-        Supported: JPG, PNG, WEBP. Max 10MB each.
-      </p>
     </div>
   );
 }
