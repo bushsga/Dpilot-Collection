@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation"
 import { useAuth } from "@/context/AuthContext"
 import Link from "next/link"
 import { LayoutDashboard, Package, ShoppingBag, LogOut, FolderOpen } from "lucide-react"
+import Script from "next/script"
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user, loading, signOut } = useAuth()
@@ -22,7 +23,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     router.push("/admin/login")
   }
 
-  // Show loading until client-side hydration
   if (!mounted) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F7F5F2]">
@@ -31,12 +31,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     )
   }
 
-  // If on login page, don't show admin nav
   if (isLoginPage) {
     return <>{children}</>
   }
 
-  // If no user and not loading, show login message with link
   if (!user && !loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F7F5F2]">
@@ -51,7 +49,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     )
   }
 
-  // Show loading while auth is being checked
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F7F5F2]">
@@ -60,9 +57,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     )
   }
 
-  // User is logged in – show admin layout
   return (
     <div className="min-h-screen bg-[#F7F5F2]">
+      {/* Load Cloudinary script directly in admin */}
+      <Script 
+        src="https://upload-widget.cloudinary.com/global/all.js" 
+        strategy="beforeInteractive"
+      />
+      
       <nav className="bg-[#0A0A0A] text-white sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-center justify-between h-16">
