@@ -1,10 +1,11 @@
-"use client"
+'use client';
 
-import { FaWhatsapp } from "react-icons/fa"
+import { FaWhatsapp } from 'react-icons/fa';
 
 export default function WhatsAppButton() {
-  const phoneNumber = "08053356264" // ← CHANGE THIS to your client's WhatsApp number
-  const message = encodeURIComponent("Hello DPiLOT COLLECTION! I'm interested in your shoes.")
+  // ⚠️ REPLACE THIS with the actual WhatsApp number (include country code, no + sign)
+  const phoneNumber = '2348053356264'; // ← CHANGE THIS!
+  const message = encodeURIComponent('Hello DPiLOT COLLECTION! I\'m interested in your shoes.');
 
   return (
     <a
@@ -16,5 +17,5 @@ export default function WhatsAppButton() {
     >
       <FaWhatsapp size={24} />
     </a>
-  )
+  );
 }

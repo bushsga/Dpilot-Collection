@@ -1,1 +1,0 @@
-window.__DPILOT_PAYSTACK_KEY__ = "pk_test_af9d4f228af98e5c38b4689a99cb87f5ea279c02";

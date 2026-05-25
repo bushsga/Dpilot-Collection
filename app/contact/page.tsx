@@ -57,7 +57,7 @@ export default function ContactPage() {
           <div className="text-center p-6 bg-[#F7F5F2]">
             <Mail className="w-8 h-8 text-[#1B3A4B] mx-auto mb-3" />
             <h3 className="font-medium mb-2">Email</h3>
-            <p className="text-[#6B7280]">dpilot241@gmail.com</p>
+            <p className="text-[#6B7280]">olanrewajuabdulquayum@gmail.com</p>
           </div>
           <div className="text-center p-6 bg-[#F7F5F2]">
             <MapPin className="w-8 h-8 text-[#1B3A4B] mx-auto mb-3" />

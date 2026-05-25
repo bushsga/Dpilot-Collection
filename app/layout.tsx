@@ -36,9 +36,14 @@ export default function RootLayout({
           </CartProvider>
         </AuthProvider>
 
-        <Script src="https://js.paystack.co/v2/inline.js" strategy="beforeInteractive" />
-        <Script src="https://upload-widget.cloudinary.com/global/all.js" strategy="lazyOnload" />
-        <script src="/paystack-key.js" />
+        <Script
+          src="https://js.paystack.co/v2/inline.js"
+          strategy="beforeInteractive"
+        />
+        <Script
+  src="https://upload-widget.cloudinary.com/global/all.js"
+  strategy="beforeInteractive"
+/>
       </body>
     </html>
   )
