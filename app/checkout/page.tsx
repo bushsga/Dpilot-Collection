@@ -6,6 +6,7 @@ import { useCart } from "@/context/CartContext"
 import Container from "@/components/Container"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
+import { PAYSTACK_PUBLIC_KEY } from "@/lib/paystack"
 
 declare global { interface Window { PaystackPop: { setup: (o: any) => { openIframe: () => void } } } }
 
@@ -68,7 +69,6 @@ export default function CheckoutPage() {
     setLoading(true)
 
     try {
-      // 1. Create order in database
       const res = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -93,10 +93,7 @@ export default function CheckoutPage() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to create order')
 
-      // 2. Read Paystack key at runtime (not from module)
-      const PAYSTACK_KEY = 'pk_test_af9d4f228af98e5c38b4689a99cb87f5ea279c02'
-
-      // 3. Wait for Paystack script to load
+      // Wait for Paystack script
       const waitForPaystack = (): Promise<void> => {
         return new Promise((resolve, reject) => {
           if (typeof window !== 'undefined' && window.PaystackPop) {
@@ -111,7 +108,7 @@ export default function CheckoutPage() {
               resolve()
             } else if (attempts > 60) {
               clearInterval(interval)
-              reject(new Error('Payment system is still loading. Please refresh the page and try again.'))
+              reject(new Error('Payment system is still loading. Please refresh and try again.'))
             }
           }, 500)
         })
@@ -119,9 +116,9 @@ export default function CheckoutPage() {
 
       await waitForPaystack()
 
-      // 4. Open Paystack payment popup
+      // Open Paystack with hardcoded fallback key
       const handler = window.PaystackPop.setup({
-        key: PAYSTACK_KEY,
+        key: PAYSTACK_PUBLIC_KEY,
         email: form.email,
         amount: totalPrice * 100,
         currency: 'NGN',
@@ -146,14 +143,13 @@ export default function CheckoutPage() {
   return (
     <main className="py-12 md:py-20 bg-white min-h-screen">
       <Container>
-        {/* Back link */}
         <Link href="/cart" className="inline-flex items-center gap-2 text-sm text-[#6B7280] hover:text-[#1B3A4B] mb-6 transition-colors">
           <ArrowLeft size={16} /> Back to Cart
         </Link>
 
         <h1 className="text-2xl md:text-3xl font-semibold mb-8">Checkout</h1>
 
-        {/* Mobile: Order Summary FIRST */}
+        {/* Mobile Order Summary */}
         <div className="block lg:hidden mb-8">
           <div className="bg-[#F7F5F2] p-6">
             <h2 className="text-lg font-bold mb-4 pb-3 border-b">Your Order</h2>
@@ -173,26 +169,13 @@ export default function CheckoutPage() {
         </div>
 
         <div className="grid lg:grid-cols-3 gap-8">
-          {/* Checkout Form */}
           <form onSubmit={handleSubmit} className="lg:col-span-2 space-y-4">
             {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm p-4">{error}</div>}
 
-            <div>
-              <label className="block text-sm font-medium mb-1">Full Name *</label>
-              <input name="name" value={form.name} onChange={handleChange} required className="w-full border p-3" placeholder="John Doe" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Email *</label>
-              <input type="email" name="email" value={form.email} onChange={handleChange} required className="w-full border p-3" placeholder="john@example.com" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Phone Number *</label>
-              <input type="tel" name="phone" value={form.phone} onChange={handleChange} required className="w-full border p-3" placeholder="08012345678" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Delivery Address *</label>
-              <textarea name="address" value={form.address} onChange={handleChange} required rows={3} className="w-full border p-3 resize-none" placeholder="Enter your full delivery address" />
-            </div>
+            <div><label className="block text-sm font-medium mb-1">Full Name *</label><input name="name" value={form.name} onChange={handleChange} required className="w-full border p-3" placeholder="John Doe" /></div>
+            <div><label className="block text-sm font-medium mb-1">Email *</label><input type="email" name="email" value={form.email} onChange={handleChange} required className="w-full border p-3" placeholder="john@example.com" /></div>
+            <div><label className="block text-sm font-medium mb-1">Phone Number *</label><input type="tel" name="phone" value={form.phone} onChange={handleChange} required className="w-full border p-3" placeholder="08012345678" /></div>
+            <div><label className="block text-sm font-medium mb-1">Delivery Address *</label><textarea name="address" value={form.address} onChange={handleChange} required rows={3} className="w-full border p-3 resize-none" placeholder="Enter your full delivery address" /></div>
 
             <button type="submit" disabled={loading} className="w-full bg-[#1B3A4B] text-white py-4 font-semibold hover:bg-[#0A0A0A] transition disabled:opacity-50 text-sm">
               {loading ? 'Processing...' : `Pay ₦${totalPrice.toLocaleString()}`}
